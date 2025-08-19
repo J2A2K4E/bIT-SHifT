@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bit-Shift Odyssey</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            overflow: hidden;
+            color: white;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            border: 2px solid #5D5CDE;
+        }
+
+        #bitLevel {
+            font-size: 18px;
+            color: #5D5CDE;
+            margin-bottom: 10px;
+        }
+
+        #instructions {
+            font-size: 12px;
+            color: #ccc;
+            line-height: 1.4;
+        }
+
+        #mobileControls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: none;
+        }
+
+        .control-button {
+            background: rgba(93, 92, 222, 0.8);
+            border: 2px solid #5D5CDE;
+            color: white;
+            padding: 15px;
+            margin: 5px;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .control-button:active {
+            background: rgba(93, 92, 222, 1);
+            transform: scale(0.95);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 10px;
+            align-items: center;
+            justify-items: center;
+        }
+
+        #jumpBtn {
+            position: absolute;
+            right: -100px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: rgba(255, 87, 87, 0.8);
+            border: 2px solid #ff5757;
+        }
+
+        @media (max-width: 768px) {
+            #mobileControls {
+                display: block;
+            }
+            
+            #instructions {
+                font-size: 10px;
+            }
+        }
+
+        .transition-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, transparent 0%, rgba(93, 92, 222, 0.3) 100%);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 50;
+            transition: opacity 0.5s ease;
+        }
+
+        .transition-overlay.active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="ui">
+            <div id="bitLevel">8-BIT ERA</div>
+            <div id="instructions">
+                Use WASD or Arrow Keys to move<br>
+                Space to jump<br>
+                Find glowing checkpoints to evolve!
+            </div>
+        </div>
+
+        <div id="mobileControls">
+            <div class="control-grid">
+                <div></div>
+                <div class="control-button" id="upBtn">↑</div>
+                <div></div>
+                <div class="control-button" id="leftBtn">←</div>
+                <div class="control-button" id="downBtn">↓</div>
+                <div class="control-button" id="rightBtn">→</div>
+                <div></div>
+                <div></div>
+                <div></div>
+            </div>
+            <div class="control-button" id="jumpBtn">JUMP</div>
+        </div>
+
+        <div class="transition-overlay" id="transitionOverlay"></div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <script>
+        // Game state
+        let scene, camera, renderer, player, world;
+        let currentBitLevel = 8;
+        let checkpoints = [];
+        let keys = {};
+        let playerVelocity = { x: 0, y: 0, z: 0 };
+        let isGrounded = false;
+        let worldObjects = [];
+
+        // Bit level configurations
+        const bitLevels = {
+            8: {
+                name: "8-BIT ERA",
+                description: "Retro pixel perfection",
+                playerColor: 0x00ff00,
+                groundColor: 0x8B4513,
+                wallColor: 0x654321,
+                checkpointColor: 0xff0000,
+                fogColor: 0x220022,
+                fogNear: 10,
+                fogFar: 50
+            },
+            16: {
+                name: "16-BIT RENAISSANCE",
+                description: "Enhanced colors and detail",
+                playerColor: 0x00ffff,
+                groundColor: 0x228B22,
+                wallColor: 0x8B4513,
+                checkpointColor: 0xff4500,
+                fogColor: 0x001122,
+                fogNear: 15,
+                fogFar: 60
+            },
+            32: {
+                name: "32-BIT REVOLUTION",
+                description: "3D acceleration era",
+                playerColor: 0xffd700,
+                groundColor: 0x556B2F,
+                wallColor: 0x8B7355,
+                checkpointColor: 0xff6347,
+                fogColor: 0x112233,
+                fogNear: 20,
+                fogFar: 70
+            },
+            64: {
+                name: "64-BIT EVOLUTION",
+                description: "Realistic textures and lighting",
+                playerColor: 0xff69b4,
+                groundColor: 0x2F4F4F,
+                wallColor: 0x696969,
+                checkpointColor: 0xff1493,
+                fogColor: 0x001133,
+                fogNear: 25,
+                fogFar: 80
+            },
+            128: {
+                name: "128-BIT TRANSCENDENCE",
+                description: "Photorealistic perfection",
+                playerColor: 0x9370db,
+                groundColor: 0x1C1C1C,
+                wallColor: 0x2F2F2F,
+                checkpointColor: 0x8a2be2,
+                fogColor: 0x000044,
+                fogNear: 30,
+                fogFar: 100
+            }
+        };
+
+        // Initialize the game
+        function init() {
+            // Create scene
+            scene = new THREE.Scene();
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('gameContainer').appendChild(renderer.domElement);
+
+            // Set up initial lighting
+            setupLighting();
+            
+            // Create world
+            createWorld();
+            
+            // Create player
+            createPlayer();
+            
+            // Create checkpoints
+            createCheckpoints();
+            
+            // Apply initial bit level
+            transitionToBitLevel(currentBitLevel);
+            
+            // Set up controls
+            setupControls();
+            
+            // Start game loop
+            animate();
+        }
+
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+            scene.add(ambientLight);
+
+            // Directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+        }
+
+        function createWorld() {
+            world = new THREE.Group();
+            scene.add(world);
+
+            // Ground platforms
+            const platformGeometry = new THREE.BoxGeometry(20, 1, 20);
+            const platform1 = new THREE.Mesh(platformGeometry, new THREE.MeshStandardMaterial());
+            platform1.position.set(0, -1, 0);
+            platform1.receiveShadow = true;
+            platform1.name = 'platform';
+            world.add(platform1);
+            worldObjects.push(platform1);
+
+            const platform2 = new THREE.Mesh(platformGeometry, new THREE.MeshStandardMaterial());
+            platform2.position.set(25, 2, 0);
+            platform2.receiveShadow = true;
+            platform2.name = 'platform';
+            world.add(platform2);
+            worldObjects.push(platform2);
+
+            const platform3 = new THREE.Mesh(platformGeometry, new THREE.MeshStandardMaterial());
+            platform3.position.set(-25, 4, 0);
+            platform3.receiveShadow = true;
+            platform3.name = 'platform';
+            world.add(platform3);
+            worldObjects.push(platform3);
+
+            const platform4 = new THREE.Mesh(platformGeometry, new THREE.MeshStandardMaterial());
+            platform4.position.set(0, 6, -25);
+            platform4.receiveShadow = true;
+            platform4.name = 'platform';
+            world.add(platform4);
+            worldObjects.push(platform4);
+
+            const platform5 = new THREE.Mesh(platformGeometry, new THREE.MeshStandardMaterial());
+            platform5.position.set(0, 8, 25);
+            platform5.receiveShadow = true;
+            platform5.name = 'platform';
+            world.add(platform5);
+            worldObjects.push(platform5);
+
+            // Walls/obstacles
+            const wallGeometry = new THREE.BoxGeometry(2, 4, 2);
+            for (let i = 0; i < 8; i++) {
+                const wall = new THREE.Mesh(wallGeometry, new THREE.MeshStandardMaterial());
+                wall.position.set(
+                    (Math.random() - 0.5) * 40,
+                    1,
+                    (Math.random() - 0.5) * 40
+                );
+                wall.castShadow = true;
+                wall.receiveShadow = true;
+                wall.name = 'wall';
+                world.add(wall);
+                worldObjects.push(wall);
+            }
+        }
+
+        function createPlayer() {
+            const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+            const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+            player = new THREE.Mesh(playerGeometry, playerMaterial);
+            player.position.set(0, 2, 0);
+            player.castShadow = true;
+            player.name = 'player';
+            scene.add(player);
+        }
+
+        function createCheckpoints() {
+            const checkpointPositions = [
+                { x: 25, y: 4, z: 0, targetBit: 16 },
+                { x: -25, y: 6, z: 0, targetBit: 32 },
+                { x: 0, y: 8, z: -25, targetBit: 64 },
+                { x: 0, y: 10, z: 25, targetBit: 128 }
+            ];
+
+            checkpointPositions.forEach((pos, index) => {
+                const checkpointGeometry = new THREE.OctahedronGeometry(1.5);
+                const checkpointMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0xff0000,
+                    emissive: 0x440000,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                const checkpoint = new THREE.Mesh(checkpointGeometry, checkpointMaterial);
+                checkpoint.position.set(pos.x, pos.y, pos.z);
+                checkpoint.userData = { targetBit: pos.targetBit, collected: false };
+                checkpoint.name = 'checkpoint';
+                scene.add(checkpoint);
+                checkpoints.push(checkpoint);
+            });
+        }
+
+        function transitionToBitLevel(level) {
+            const config = bitLevels[level];
+            const overlay = document.getElementById('transitionOverlay');
+            
+            // Show transition effect
+            overlay.classList.add('active');
+            
+            setTimeout(() => {
+                // Update UI
+                document.getElementById('bitLevel').textContent = config.name;
+                
+                // Update fog
+                scene.fog = new THREE.Fog(config.fogColor, config.fogNear, config.fogFar);
+                
+                // Update materials based on bit level
+                worldObjects.forEach(obj => {
+                    if (obj.name === 'platform') {
+                        updateObjectMaterial(obj, config.groundColor, level);
+                    } else if (obj.name === 'wall') {
+                        updateObjectMaterial(obj, config.wallColor, level);
+                    }
+                });
+
+                // Update player material
+                updateObjectMaterial(player, config.playerColor, level);
+
+                // Update checkpoint materials
+                checkpoints.forEach(checkpoint => {
+                    if (!checkpoint.userData.collected) {
+                        updateObjectMaterial(checkpoint, config.checkpointColor, level);
+                    }
+                });
+
+                // Hide transition effect
+                setTimeout(() => {
+                    overlay.classList.remove('active');
+                }, 500);
+            }, 250);
+        }
+
+        function updateObjectMaterial(object, color, bitLevel) {
+            let newMaterial;
+            
+            switch (bitLevel) {
+                case 8:
+                    // 8-bit: Flat colors, no lighting
+                    newMaterial = new THREE.MeshBasicMaterial({ 
+                        color: color,
+                        transparent: object.name === 'checkpoint',
+                        opacity: object.name === 'checkpoint' ? 0.8 : 1
+                    });
+                    break;
+                case 16:
+                    // 16-bit: Simple Lambert shading
+                    newMaterial = new THREE.MeshLambertMaterial({ 
+                        color: color,
+                        transparent: object.name === 'checkpoint',
+                        opacity: object.name === 'checkpoint' ? 0.8 : 1
+                    });
+                    break;
+                case 32:
+                    // 32-bit: Standard material with basic PBR
+                    newMaterial = new THREE.MeshStandardMaterial({ 
+                        color: color,
+                        roughness: 0.8,
+                        metalness: 0.1,
+                        transparent: object.name === 'checkpoint',
+                        opacity: object.name === 'checkpoint' ? 0.8 : 1,
+                        emissive: object.name === 'checkpoint' ? new THREE.Color(color).multiplyScalar(0.2) : 0x000000
+                    });
+                    break;
+                case 64:
+                    // 64-bit: Enhanced materials with more realistic properties
+                    newMaterial = new THREE.MeshStandardMaterial({ 
+                        color: color,
+                        roughness: object.name === 'wall' ? 0.6 : 0.4,
+                        metalness: object.name === 'player' ? 0.3 : 0.1,
+                        transparent: object.name === 'checkpoint',
+                        opacity: object.name === 'checkpoint' ? 0.9 : 1,
+                        emissive: object.name === 'checkpoint' ? new THREE.Color(color).multiplyScalar(0.3) : 0x000000
+                    });
+                    break;
+                case 128:
+                    // 128-bit: High-quality materials with advanced properties
+                    newMaterial = new THREE.MeshStandardMaterial({ 
+                        color: color,
+                        roughness: object.name === 'wall' ? 0.3 : 0.2,
+                        metalness: object.name === 'player' ? 0.5 : 0.2,
+                        transparent: object.name === 'checkpoint',
+                        opacity: object.name === 'checkpoint' ? 0.95 : 1,
+                        emissive: object.name === 'checkpoint' ? new THREE.Color(color).multiplyScalar(0.4) : 0x000000,
+                        envMapIntensity: 1.0
+                    });
+                    break;
+                default:
+                    newMaterial = new THREE.MeshStandardMaterial({ color: color });
+            }
+
+            // Animate material transition
+            const oldMaterial = object.material;
+            const tempOpacity = oldMaterial.opacity || 1;
+            
+            new TWEEN.Tween({ opacity: tempOpacity })
+                .to({ opacity: 0 }, 300)
+                .onUpdate(function(obj) {
+                    if (oldMaterial.transparent !== undefined) {
+                        oldMaterial.transparent = true;
+                        oldMaterial.opacity = obj.opacity;
+                    }
+                })
+                .onComplete(() => {
+                    object.material = newMaterial;
+                    newMaterial.transparent = true;
+                    newMaterial.opacity = 0;
+                    
+                    new TWEEN.Tween({ opacity: 0 })
+                        .to({ opacity: object.name === 'checkpoint' ? (newMaterial.opacity || 0.8) : 1 }, 300)
+                        .onUpdate(function(obj) {
+                            newMaterial.opacity = obj.opacity;
+                        })
+                        .onComplete(() => {
+                            if (object.name !== 'checkpoint') {
+                                newMaterial.transparent = false;
+                                newMaterial.opacity = 1;
+                            }
+                        })
+                        .start();
+                })
+                .start();
+        }
+
+        function setupControls() {
+            // Keyboard controls
+            document.addEventListener('keydown', (event) => {
+                keys[event.key.toLowerCase()] = true;
+                if (event.key === ' ') {
+                    event.preventDefault();
+                    if (isGrounded) {
+                        playerVelocity.y = 0.3;
+                        isGrounded = false;
+                    }
+                }
+            });
+
+            document.addEventListener('keyup', (event) => {
+                keys[event.key.toLowerCase()] = false;
+            });
+
+            // Mobile controls
+            const mobileButtons = {
+                upBtn: 'w',
+                downBtn: 's',
+                leftBtn: 'a',
+                rightBtn: 'd',
+                jumpBtn: ' '
+            };
+
+            Object.entries(mobileButtons).forEach(([id, key]) => {
+                const button = document.getElementById(id);
+                if (button) {
+                    button.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        keys[key] = true;
+                        if (key === ' ' && isGrounded) {
+                            playerVelocity.y = 0.3;
+                            isGrounded = false;
+                        }
+                    });
+                    
+                    button.addEventListener('touchend', (e) => {
+                        e.preventDefault();
+                        keys[key] = false;
+                    });
+
+                    button.addEventListener('mousedown', (e) => {
+                        e.preventDefault();
+                        keys[key] = true;
+                        if (key === ' ' && isGrounded) {
+                            playerVelocity.y = 0.3;
+                            isGrounded = false;
+                        }
+                    });
+                    
+                    button.addEventListener('mouseup', (e) => {
+                        e.preventDefault();
+                        keys[key] = false;
+                    });
+                }
+            });
+        }
+
+        function updatePlayer() {
+            const speed = 0.1;
+            const gravity = -0.02;
+            const groundY = -0.5;
+
+            // Handle movement
+            if (keys['w'] || keys['arrowup']) {
+                playerVelocity.z -= speed;
+            }
+            if (keys['s'] || keys['arrowdown']) {
+                playerVelocity.z += speed;
+            }
+            if (keys['a'] || keys['arrowleft']) {
+                playerVelocity.x -= speed;
+            }
+            if (keys['d'] || keys['arrowright']) {
+                playerVelocity.x += speed;
+            }
+
+            // Apply friction
+            playerVelocity.x *= 0.8;
+            playerVelocity.z *= 0.8;
+
+            // Apply gravity
+            playerVelocity.y += gravity;
+
+            // Update position
+            player.position.add(new THREE.Vector3(playerVelocity.x, playerVelocity.y, playerVelocity.z));
+
+            // Ground collision
+            if (player.position.y <= groundY) {
+                player.position.y = groundY;
+                playerVelocity.y = 0;
+                isGrounded = true;
+            }
+
+            // Platform collision (basic)
+            worldObjects.forEach(obj => {
+                if (obj.name === 'platform') {
+                    const platformTop = obj.position.y + 0.5;
+                    const playerBottom = player.position.y - 1;
+                    
+                    if (playerBottom <= platformTop && playerBottom >= platformTop - 2 &&
+                        Math.abs(player.position.x - obj.position.x) < 10 &&
+                        Math.abs(player.position.z - obj.position.z) < 10) {
+                        player.position.y = platformTop + 1;
+                        playerVelocity.y = 0;
+                        isGrounded = true;
+                    }
+                }
+            });
+
+            // Check checkpoint collisions
+            checkpoints.forEach(checkpoint => {
+                if (!checkpoint.userData.collected) {
+                    const distance = player.position.distanceTo(checkpoint.position);
+                    if (distance < 2) {
+                        checkpoint.userData.collected = true;
+                        checkpoint.visible = false;
+                        
+                        if (checkpoint.userData.targetBit > currentBitLevel) {
+                            currentBitLevel = checkpoint.userData.targetBit;
+                            transitionToBitLevel(currentBitLevel);
+                        }
+                    }
+                }
+            });
+
+            // Update camera to follow player
+            camera.position.x = player.position.x;
+            camera.position.z = player.position.z + 10;
+            camera.position.y = player.position.y + 5;
+            camera.lookAt(player.position);
+        }
+
+        function animateCheckpoints() {
+            checkpoints.forEach(checkpoint => {
+                if (!checkpoint.userData.collected) {
+                    checkpoint.rotation.y += 0.02;
+                    checkpoint.position.y += Math.sin(Date.now() * 0.005 + checkpoint.position.x) * 0.01;
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            updatePlayer();
+            animateCheckpoints();
+            TWEEN.update();
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Dark mode support
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark');
+        }
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+            if (event.matches) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Start the game
+        init();
+    </script>
+</body>
+</html>
